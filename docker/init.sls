@@ -13,11 +13,17 @@ docker package dependencies:
       {%- endif %}
       - iptables
       - ca-certificates
+    - unless: test "`uname`" = "Darwin"
+
+{% set repo_state = 'absent' %}
+{% if docker.use_upstream_repo %}
+  {% set repo_state = 'managed' %}
+{% endif %}
 
 {%- if grains['os_family']|lower == 'debian' %}
 {%- if grains["oscodename"]|lower == 'jessie' and "version" not in docker%}
 docker package repository:
-  pkgrepo.managed:
+  pkgrepo.{{ repo_state }}:
     - name: deb http://http.debian.net/debian jessie-backports main
 {%- else %}
   {%- if "version" in docker %}
@@ -34,7 +40,7 @@ docker package repository:
 
 {%- if "version" in docker and use_old_repo %}
 docker package repository:
-  pkgrepo.managed:
+  pkgrepo.{{ repo_state }}:
     - name: deb https://get.docker.com/ubuntu docker main
     - humanname: Old Docker Package Repository
     - keyid: d8576a8ba88d21e9
@@ -50,7 +56,7 @@ purge old packages:
       - pkgrepo: docker package repository
 
 docker package repository:
-  pkgrepo.managed:
+  pkgrepo.{{ repo_state }}:
     - name: deb https://apt.dockerproject.org/repo {{ grains["os"]|lower }}-{{ grains["oscodename"] }} main
     - humanname: {{ grains["os"] }} {{ grains["oscodename"]|capitalize }} Docker Package Repository
     - keyid: 58118E89F3A912897C070ADBF76221572C52609D
@@ -60,9 +66,9 @@ docker package repository:
     - refresh_db: True
 {%- endif %}
 
-{%- elif grains['os_family']|lower == 'redhat' and grains['os']|lower != 'amazon' %}
+{%- elif grains['os_family']|lower in ('redhat', 'suse',) and grains['os']|lower not in ('amazon', 'fedora', 'suse',) %}
 docker package repository:
-  pkgrepo.managed:
+  pkgrepo.{{ repo_state }}:
     - name: docker
     - baseurl: https://yum.dockerproject.org/repo/main/centos/$releasever/
     - gpgcheck: 1
@@ -82,7 +88,7 @@ docker package:
     {%- elif use_old_repo %}
     - name: lxc-docker-{{ docker.version }}
     {%- else %}
-    {%- if grains['os']|lower == 'amazon' %}
+    {%- if grains['os']|lower in ('amazon', 'fedora', 'suse',) %}
     - name: docker
     {%- else %}
     - name: docker-engine
@@ -95,7 +101,7 @@ docker package:
     {%- if grains["oscodename"]|lower == 'jessie' and "version" not in docker %}
     - name: docker.io
     {%- else %}
-    {%- if grains['os']|lower == 'amazon' %}
+    {%- if grains['os']|lower in ('amazon', 'fedora', 'suse',) %}
     - name: docker
     {%- else %}
     - name: docker-engine
@@ -105,7 +111,7 @@ docker package:
     - refresh: {{ docker.refresh_repo }}
     - require:
       - pkg: docker package dependencies
-      {%- if grains['os']|lower != 'amazon' %}
+      {%- if grains['os']|lower not in ('amazon', 'fedora', 'suse',) %}
       - pkgrepo: docker package repository
       {%- endif %}
       - file: docker-config
@@ -135,11 +141,13 @@ docker-py requirements:
   pkg.installed:
     - name: {{ docker.python_pip_package }}
   pip.installed:
-    {%- if "pip" in docker and "version" in docker.pip %}
+    {%- if "pip" in docker and "version" in docker.pip and "version" in docker.pip %}
     - name: pip {{ docker.pip.version }}
     {%- else %}
     - name: pip
+    {%- if "pip" in docker and "upgrade" in docker.pip and docker.pip.upgrade %}
     - upgrade: True
+    {%- endif %}
     {%- endif %}
 
 docker-py:
